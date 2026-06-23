@@ -49,6 +49,10 @@ EXCLUDE_KEYWORDS = [
     "마감",
 ]
 
+ALWAYS_NOTIFY_BOARDS = {
+    "장학공지",
+}
+
 SEEN_PATH = Path("seen.json")
 RECENT_DAYS = 90
 MAX_PAGES_PER_BOARD = 10
@@ -397,10 +401,13 @@ def main() -> None:
             except Exception as e:
                 body = f"(본문 추출 실패: {e})"
             
-            matched = match_keywords(title, body)
+            if board_name in ALWAYS_NOTIFY_BOARDS:
+                notify(board_name, title, body, detail_url, ["장학공지 전체 알림"])
+            else:
+                matched = match_keywords(title, body)
             
-            if matched:
-                notify(board_name, title, body, detail_url, matched)
+                if matched:
+                    notify(board_name, title, body, detail_url, matched)
             
             seen[board_name].append(make_seen_item(notice))
             changed = True
