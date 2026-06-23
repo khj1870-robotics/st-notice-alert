@@ -76,6 +76,29 @@ def save_seen(seen: dict) -> None:
     )
 
 
+def get_known_ids(board_seen: list) -> set[str]:
+    ids = set()
+
+    for item in board_seen:
+        if isinstance(item, dict):
+            notice_id = item.get("id")
+            if notice_id:
+                ids.add(notice_id)
+        elif isinstance(item, str):
+            ids.add(item)
+
+    return ids
+
+
+def make_seen_item(notice: dict) -> dict:
+    return {
+        "id": notice["id"],
+        "title": notice.get("title", ""),
+        "url": notice.get("url", ""),
+        "date": notice.get("date", ""),
+    }
+
+
 def request_soup(url: str) -> BeautifulSoup:
     headers = {
         "User-Agent": "Mozilla/5.0 SeoulTechNoticeMonitor/1.0"
@@ -346,7 +369,7 @@ def main() -> None:
         print(f"[INFO] Checking board: {board_name}")
 
         notices = extract_recent_notice_links(board_url, cutoff_date)
-        known_ids = set(seen[board_name])
+        known_ids = get_known_ids(seen[board_name])
 
         print(f"[INFO] Found {len(notices)} notices")
 
@@ -365,7 +388,7 @@ def main() -> None:
             # 첫 실행 때는 최근 6개월 글을 seen.json에만 저장하고,
             # 상세 페이지 본문은 열지 않음
             if first_run:
-                seen[board_name].append(notice_id)
+                seen[board_name].append(make_seen_item(notice))
                 changed = True
                 continue
             
@@ -379,7 +402,7 @@ def main() -> None:
             if matched:
                 notify(board_name, title, body, detail_url, matched)
             
-            seen[board_name].append(notice_id)
+            seen[board_name].append(make_seen_item(notice))
             changed = True
 
     if changed:
