@@ -16,15 +16,15 @@ from bs4 import BeautifulSoup
 BOARDS = [
     {
         "name": "취업공지",
-        "url": "https://www.seoultech.ac.kr/service/info/job",
+        "url": "https://www.seoultech.ac.kr/service/info/job/?allboard=true&searchtype=-1&searchtext=",
     },
     {
         "name": "대학공지사항",
-        "url": "https://www.seoultech.ac.kr/service/info/notice",
+        "url": "https://www.seoultech.ac.kr/service/info/notice/?allboard=true&searchtype=-1&searchtext=",
     },
     {
         "name": "장학공지",
-        "url": "https://www.seoultech.ac.kr/service/info/janghak",
+        "url": "https://www.seoultech.ac.kr/service/info/janghak/?allboard=true&searchtype=-1&searchtext=",
     },
 ]
 
@@ -62,7 +62,7 @@ ALWAYS_NOTIFY_BOARDS = {
 
 SEEN_PATH = Path("seen.json")
 RECENT_DAYS = 90
-MAX_PAGES_PER_BOARD = 10
+MAX_PAGES_PER_BOARD = 20
 
 DATE_RE = re.compile(r"(20\d{2})[-.](\d{1,2})[-.](\d{1,2})")
 
@@ -154,7 +154,11 @@ def parse_date_from_text(text: str):
 def make_page_url(base_url: str, page: int) -> str:
     parsed = urlparse(base_url)
     query = parse_qs(parsed.query)
+
+    query["allboard"] = ["true"]
     query["nowpage"] = [str(page)]
+    query.setdefault("searchtype", ["-1"])
+    query.setdefault("searchtext", [""])
 
     new_query = urlencode(query, doseq=True)
     return urlunparse(parsed._replace(query=new_query))
@@ -169,6 +173,7 @@ def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
 
         dated_count = 0
         recent_count = 0
+        page_items = []
 
         print(f"[INFO] Fetch page {page}: {page_url}")
 
@@ -187,20 +192,24 @@ def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
 
             posted_date = parse_date_from_text(row_text)
 
-            # 날짜를 못 읽은 글은 기준을 알 수 없으므로 제외
             if posted_date is None:
-                print(f"[WARN] Date not found. Skip: {title}")
                 continue
 
             dated_count += 1
+
+            full_url = urljoin(board_url, href)
+            notice_id = get_notice_id(full_url)
+
+            page_items.append({
+                "id": notice_id,
+                "title": title,
+                "date": posted_date.isoformat(),
+            })
 
             if posted_date < cutoff_date:
                 continue
 
             recent_count += 1
-
-            full_url = urljoin(board_url, href)
-            notice_id = get_notice_id(full_url)
 
             unique[notice_id] = {
                 "id": notice_id,
@@ -209,19 +218,30 @@ def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
                 "date": posted_date.isoformat(),
             }
 
-        print(
-            f"[INFO] Page {page}: dated={dated_count}, recent={recent_count}"
-        )
+        print(f"[INFO] Page {page}: dated={dated_count}, recent={recent_count}")
 
-        # 이 페이지에서 날짜 있는 글이 하나도 없으면 구조가 안 맞는 것이므로 중단
+        if page_items:
+            print(
+                f"[INFO] Page {page} first: "
+                f"{page_items[0]['date']} | {page_items[0]['title'][:60]}"
+            )
+            print(
+                f"[INFO] Page {page} last: "
+                f"{page_items[-1]['date']} | {page_items[-1]['title'][:60]}"
+            )
+            print(f"[INFO] Page {page} first_id: {page_items[0]['id']}")
+        else:
+            print(f"[WARN] Page {page}: no notice items found")
+
         if dated_count == 0:
+            print("[INFO] No dated notices. Stop pagination.")
             break
 
-        # 이 페이지에 최근 3개월 글이 하나도 없으면 이후 페이지는 더 오래된 글일 가능성이 높으므로 중단
         if recent_count == 0:
             print("[INFO] Older than cutoff. Stop pagination.")
             break
 
+    print(f"[INFO] Total unique recent notices: {len(unique)}")
     return list(unique.values())
 
 
