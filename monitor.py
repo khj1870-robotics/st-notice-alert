@@ -62,7 +62,7 @@ ALWAYS_NOTIFY_BOARDS = {
 
 SEEN_PATH = Path("seen.json")
 RECENT_DAYS = 90
-MAX_PAGES_PER_BOARD = 20
+MAX_PAGES_PER_BOARD = 1
 
 DATE_RE = re.compile(r"(20\d{2})[-.](\d{1,2})[-.](\d{1,2})")
 
@@ -167,81 +167,52 @@ def make_page_url(base_url: str, page: int) -> str:
 def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
     unique = {}
 
-    for page in range(1, MAX_PAGES_PER_BOARD + 1):
-        page_url = make_page_url(board_url, page)
-        soup = request_soup(page_url)
+    page_url = make_page_url(board_url, 1)
+    soup = request_soup(page_url)
 
-        dated_count = 0
-        recent_count = 0
-        page_items = []
+    dated_count = 0
+    recent_count = 0
 
-        print(f"[INFO] Fetch page {page}: {page_url}")
+    print(f"[INFO] Fetch latest page only: {page_url}")
 
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            title = a.get_text(" ", strip=True)
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        title = a.get_text(" ", strip=True)
 
-            if "do=commonview" not in href:
-                continue
+        if "do=commonview" not in href:
+            continue
 
-            if not title:
-                continue
+        if not title:
+            continue
 
-            row = a.find_parent("tr") or a.find_parent("li") or a.parent
-            row_text = row.get_text(" ", strip=True) if row else title
+        row = a.find_parent("tr") or a.find_parent("li") or a.parent
+        row_text = row.get_text(" ", strip=True) if row else title
 
-            posted_date = parse_date_from_text(row_text)
+        posted_date = parse_date_from_text(row_text)
 
-            if posted_date is None:
-                continue
+        if posted_date is None:
+            continue
 
-            dated_count += 1
+        dated_count += 1
 
-            full_url = urljoin(board_url, href)
-            notice_id = get_notice_id(full_url)
+        if posted_date < cutoff_date:
+            continue
 
-            page_items.append({
-                "id": notice_id,
-                "title": title,
-                "date": posted_date.isoformat(),
-            })
+        recent_count += 1
 
-            if posted_date < cutoff_date:
-                continue
+        full_url = urljoin(board_url, href)
+        notice_id = get_notice_id(full_url)
 
-            recent_count += 1
+        unique[notice_id] = {
+            "id": notice_id,
+            "title": title,
+            "url": full_url,
+            "date": posted_date.isoformat(),
+        }
 
-            unique[notice_id] = {
-                "id": notice_id,
-                "title": title,
-                "url": full_url,
-                "date": posted_date.isoformat(),
-            }
-
-        print(f"[INFO] Page {page}: dated={dated_count}, recent={recent_count}")
-
-        if page_items:
-            print(
-                f"[INFO] Page {page} first: "
-                f"{page_items[0]['date']} | {page_items[0]['title'][:60]}"
-            )
-            print(
-                f"[INFO] Page {page} last: "
-                f"{page_items[-1]['date']} | {page_items[-1]['title'][:60]}"
-            )
-            print(f"[INFO] Page {page} first_id: {page_items[0]['id']}")
-        else:
-            print(f"[WARN] Page {page}: no notice items found")
-
-        if dated_count == 0:
-            print("[INFO] No dated notices. Stop pagination.")
-            break
-
-        if recent_count == 0:
-            print("[INFO] Older than cutoff. Stop pagination.")
-            break
-
+    print(f"[INFO] Latest page: dated={dated_count}, recent={recent_count}")
     print(f"[INFO] Total unique recent notices: {len(unique)}")
+
     return list(unique.values())
 
 
