@@ -5,7 +5,9 @@ import re
 import time
 import unicodedata
 from pathlib import Path
-from urllib.parse import parse_qs, urljoin, urlparse
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -48,6 +50,10 @@ EXCLUDE_KEYWORDS = [
 ]
 
 SEEN_PATH = Path("seen.json")
+RECENT_DAYS = 90
+MAX_PAGES_PER_BOARD = 10
+
+DATE_RE = re.compile(r"(20\d{2})[-.](\d{1,2})[-.](\d{1,2})")
 
 
 def normalize(text: str) -> str:
@@ -98,34 +104,89 @@ def get_notice_id(url: str) -> str:
     return url
 
 
-def extract_notice_links(board_url: str) -> list[dict]:
-    soup = request_soup(board_url)
-    notices = []
+def parse_date_from_text(text: str):
+    match = DATE_RE.search(text or "")
+    if not match:
+        return None
 
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        title = a.get_text(" ", strip=True)
+    year, month, day = map(int, match.groups())
 
-        if "do=commonview" not in href:
-            continue
+    try:
+        return datetime(year, month, day).date()
+    except ValueError:
+        return None
 
-        if not title:
-            continue
 
-        full_url = urljoin(board_url, href)
-        notice_id = get_notice_id(full_url)
+def make_page_url(base_url: str, page: int) -> str:
+    parsed = urlparse(base_url)
+    query = parse_qs(parsed.query)
+    query["nowpage"] = [str(page)]
 
-        notices.append(
-            {
+    new_query = urlencode(query, doseq=True)
+    return urlunparse(parsed._replace(query=new_query))
+
+
+def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
+    unique = {}
+
+    for page in range(1, MAX_PAGES_PER_BOARD + 1):
+        page_url = make_page_url(board_url, page)
+        soup = request_soup(page_url)
+
+        dated_count = 0
+        recent_count = 0
+
+        print(f"[INFO] Fetch page {page}: {page_url}")
+
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            title = a.get_text(" ", strip=True)
+
+            if "do=commonview" not in href:
+                continue
+
+            if not title:
+                continue
+
+            row = a.find_parent("tr") or a.find_parent("li") or a.parent
+            row_text = row.get_text(" ", strip=True) if row else title
+
+            posted_date = parse_date_from_text(row_text)
+
+            # 날짜를 못 읽은 글은 기준을 알 수 없으므로 제외
+            if posted_date is None:
+                print(f"[WARN] Date not found. Skip: {title}")
+                continue
+
+            dated_count += 1
+
+            if posted_date < cutoff_date:
+                continue
+
+            recent_count += 1
+
+            full_url = urljoin(board_url, href)
+            notice_id = get_notice_id(full_url)
+
+            unique[notice_id] = {
                 "id": notice_id,
                 "title": title,
                 "url": full_url,
+                "date": posted_date.isoformat(),
             }
+
+        print(
+            f"[INFO] Page {page}: dated={dated_count}, recent={recent_count}"
         )
 
-    unique = {}
-    for item in notices:
-        unique[item["id"]] = item
+        # 이 페이지에서 날짜 있는 글이 하나도 없으면 구조가 안 맞는 것이므로 중단
+        if dated_count == 0:
+            break
+
+        # 이 페이지에 최근 3개월 글이 하나도 없으면 이후 페이지는 더 오래된 글일 가능성이 높으므로 중단
+        if recent_count == 0:
+            print("[INFO] Older than cutoff. Stop pagination.")
+            break
 
     return list(unique.values())
 
@@ -270,6 +331,12 @@ def main() -> None:
     first_run = not SEEN_PATH.exists() or seen == {}
     changed = False
 
+    today = datetime.now(ZoneInfo("Asia/Seoul")).date()
+    cutoff_date = today - timedelta(days=RECENT_DAYS)
+    
+    print(f"[INFO] Today: {today}")
+    print(f"[INFO] Cutoff date: {cutoff_date}")
+
     for board in BOARDS:
         board_name = board["name"]
         board_url = board["url"]
@@ -278,7 +345,7 @@ def main() -> None:
 
         print(f"[INFO] Checking board: {board_name}")
 
-        notices = extract_notice_links(board_url)
+        notices = extract_recent_notice_links(board_url, cutoff_date)
         known_ids = set(seen[board_name])
 
         print(f"[INFO] Found {len(notices)} notices")
@@ -291,20 +358,27 @@ def main() -> None:
 
             title = notice["title"]
             detail_url = notice["url"]
-
-            print(f"[INFO] New notice: {board_name} | {title}")
-
+            posted_date = notice.get("date", "unknown")
+            
+            print(f"[INFO] New notice: {board_name} | {posted_date} | {title}")
+            
+            # 첫 실행 때는 최근 6개월 글을 seen.json에만 저장하고,
+            # 상세 페이지 본문은 열지 않음
+            if first_run:
+                seen[board_name].append(notice_id)
+                changed = True
+                continue
+            
             try:
                 body = extract_detail_body(detail_url)
             except Exception as e:
                 body = f"(본문 추출 실패: {e})"
-
+            
             matched = match_keywords(title, body)
-
-            # 첫 실행 때 기존 공지 폭탄 방지
-            if not first_run and matched:
+            
+            if matched:
                 notify(board_name, title, body, detail_url, matched)
-
+            
             seen[board_name].append(notice_id)
             changed = True
 
