@@ -119,6 +119,12 @@
       "title": "[취업진로본부×총졸업준비위원회] ST:talk 동문 선배들과의 취업 진로 테이블 토크",
       "url": "https://www.seoultech.ac.kr/service/info/job/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=57925&bidx=890197&qidx=57925&cate=0&allboard=true&nowpage=1",
       "date": "2026-05-12"
+    },
+    {
+      "id": "bidx:892225|qidx:57926|bnum:57926",
+      "title": "2026-2학기 학사학위취득유예생 현장실습 참여 유의사항 안내",
+      "url": "https://www.seoultech.ac.kr/service/info/job/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=57926&bidx=892225&qidx=57926&cate=0&allboard=true&nowpage=1",
+      "date": "2026-07-06"
     }
   ],
   "대학공지사항": [
@@ -373,6 +379,30 @@
       "title": "[예비군연대]2026학년도 1학기 이수 후 학기초과자 학생예비군 전출 안내",
       "url": "https://www.seoultech.ac.kr/service/info/notice/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=4691&bidx=892179&qidx=4691&cate=0&allboard=true&nowpage=1",
       "date": "2026-07-04"
+    },
+    {
+      "id": "bidx:892238|qidx:4691|bnum:4691",
+      "title": "[반도체소부장혁신융합대학사업단] 2026 하계 반도체 공정 실습 프로그램 교육생 모집 안내",
+      "url": "https://www.seoultech.ac.kr/service/info/notice/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=4691&bidx=892238&qidx=4691&cate=0&allboard=true&nowpage=1",
+      "date": "2026-07-06"
+    },
+    {
+      "id": "bidx:892230|qidx:4691|bnum:4691",
+      "title": "[기술지주] \"교내 기술보증기금 추천 혁신스타트업 모집\" (~7.31.)",
+      "url": "https://www.seoultech.ac.kr/service/info/notice/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=4691&bidx=892230&qidx=4691&cate=0&allboard=true&nowpage=1",
+      "date": "2026-07-06"
+    },
+    {
+      "id": "bidx:892242|qidx:4691|bnum:4691",
+      "title": "2026년도 기술사업화 지원 프로그램(ST-GRANT) 모집 공고",
+      "url": "https://www.seoultech.ac.kr/service/info/notice/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=4691&bidx=892242&qidx=4691&cate=0&allboard=true&nowpage=1",
+      "date": "2026-07-06"
+    },
+    {
+      "id": "bidx:892231|qidx:4691|bnum:4691",
+      "title": "[국제교류처] 해외파견 교환학생 설명회 개최",
+      "url": "https://www.seoultech.ac.kr/service/info/notice/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=4691&bidx=892231&qidx=4691&cate=0&allboard=true&nowpage=1",
+      "date": "2026-07-06"
     }
   ],
   "장학공지": [
@@ -554,6 +584,18 @@
       "id": "bidx:892204|qidx:5233|bnum:5233",
       "title": "2026년 2학기 농촌출신대학(원)생 학자금 대출 신청 안내",
       "url": "https://www.seoultech.ac.kr/service/info/janghak/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=5233&bidx=892204&qidx=5233&cate=0&allboard=true&nowpage=1",
+      "date": "2026-07-06"
+    },
+    {
+      "id": "bidx:892245|qidx:57138|bnum:57138",
+      "title": "2026-1학기 국가근로장학생 모집(교체)_차오름지역아동센터",
+      "url": "https://www.seoultech.ac.kr/service/info/janghak/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=57138&bidx=892245&qidx=57138&cate=0&allboard=true&nowpage=1",
+      "date": "2026-07-06"
+    },
+    {
+      "id": "bidx:892220|qidx:5233|bnum:5233",
+      "title": "2026년도 산학협동재단 장학생 선발 안내(~7/14(화)까지)",
+      "url": "https://www.seoultech.ac.kr/service/info/janghak/?do=commonview&searchtext=&searchtype=-1&nowpage=1&bnum=5233&bidx=892220&qidx=5233&cate=0&allboard=true&nowpage=1",
       "date": "2026-07-06"
     }
   ]
