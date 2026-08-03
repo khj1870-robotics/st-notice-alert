@@ -57,6 +57,24 @@ EXCLUDE_KEYWORDS = [
     "마감",
 ]
 
+# 게시판 종류와 관계없이 알림하지 않을 공지 유형이다.
+# 공백 차이만 무시하고 제목에 아래 문구가 포함되면 제외한다.
+EXCLUDED_NOTICE_TYPES = [
+    "학칙 일부개정 공고",
+    "교수 모집",
+    "교수 초빙",
+    "교수 채용",
+    "교원 모집",
+    "교원 초빙",
+    "교원 채용",
+    "학생예비군",
+    "생활관생 모집",
+    "튜터 모집",
+    "홍보대사 모집",
+    "병무청",
+    "현역병",
+]
+
 ALWAYS_NOTIFY_BOARDS = {
     "장학공지",
 }
@@ -403,6 +421,15 @@ def match_keywords(title: str) -> list[str]:
     ]
 
 
+def is_excluded_notice(title: str) -> bool:
+    """사용자가 알림을 원하지 않는 공지 유형인지 제목으로 판별한다."""
+    compact_title = re.sub(r"\s+", "", normalize(title))
+    return any(
+        re.sub(r"\s+", "", normalize(notice_type)) in compact_title
+        for notice_type in EXCLUDED_NOTICE_TYPES
+    )
+
+
 def clean_display_title(title: str) -> str:
     """알림 제목에서 홍보 말머리와 끝의 접수기한 표기만 제거한다."""
     original = (title or "").strip()
@@ -662,6 +689,12 @@ def main() -> None:
             # 첫 실행 때는 최근 6개월 글을 seen.json에만 저장하고,
             # 상세 페이지 본문은 열지 않음
             if first_run:
+                seen[board_name].append(make_seen_item(notice))
+                changed = True
+                continue
+
+            if is_excluded_notice(title):
+                print(f"[INFO] Excluded notice type: {board_name} | {title}")
                 seen[board_name].append(make_seen_item(notice))
                 changed = True
                 continue
