@@ -64,5 +64,26 @@ class NoticeListParserTests(unittest.TestCase):
         self.assertEqual(notices, [])
 
 
+class DisplayTitleTests(unittest.TestCase):
+    def test_removes_promotion_prefix_and_trailing_deadline(self):
+        title = "(홍보) 2026년 하반기 서울인재대학장학금 선발 안내(~8/10(월까지)"
+
+        self.assertEqual(
+            monitor.clean_display_title(title),
+            "2026년 하반기 서울인재대학장학금 선발 안내",
+        )
+
+    def test_supports_other_promotion_brackets(self):
+        self.assertEqual(
+            monitor.clean_display_title("[외부홍보] AI 교육 참가자 모집 [~8.31까지]"),
+            "AI 교육 참가자 모집",
+        )
+
+    def test_keeps_meaningful_parentheses(self):
+        title = "AI 로봇 교육(온라인) 참가자 모집"
+
+        self.assertEqual(monitor.clean_display_title(title), title)
+
+
 if __name__ == "__main__":
     unittest.main()
