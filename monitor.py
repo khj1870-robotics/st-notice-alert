@@ -66,6 +66,7 @@ RECENT_DAYS = 90
 MAX_PAGES_PER_BOARD = 1
 
 DATE_RE = re.compile(r"(20\d{2})[-.](\d{1,2})[-.](\d{1,2})")
+DATE_CELL_RE = re.compile(r"^\s*(20\d{2})[-.](\d{1,2})[-.](\d{1,2})\s*$")
 
 
 def normalize(text: str) -> str:
@@ -152,6 +153,33 @@ def parse_date_from_text(text: str):
         return None
 
 
+def extract_posted_date(row):
+    """목록 행의 날짜 전용 셀에서 게시일을 읽는다."""
+    if row is None:
+        return None
+
+    # 제목이나 신청기간에 포함된 날짜를 게시일로 오인하지 않도록,
+    # 내용 전체가 날짜인 표 셀만 인정한다.
+    for cell in row.find_all(["td", "th"]):
+        text = cell.get_text(" ", strip=True)
+        match = DATE_CELL_RE.fullmatch(text)
+        if not match:
+            continue
+
+        year, month, day = map(int, match.groups())
+        try:
+            return datetime(year, month, day).date()
+        except ValueError:
+            continue
+
+    # 표가 아닌 목록형 게시판은 <time datetime="...">을 사용할 수 있다.
+    time_tag = row.find("time", datetime=True)
+    if time_tag:
+        return parse_date_from_text(time_tag.get("datetime", ""))
+
+    return None
+
+
 def make_page_url(base_url: str, page: int) -> str:
     parsed = urlparse(base_url)
     query = parse_qs(parsed.query)
@@ -168,7 +196,7 @@ def make_page_url(base_url: str, page: int) -> str:
 GENERIC_TITLE_TOKENS = {
     "더보기", "더보기+", "더보기 +", "+", "more", "more+",
     "자세히", "자세히보기", "상세보기", "바로가기", "view", "detail",
-    "read more", "목록",
+    "read more", "목록", "새창열림", "새 창 열림",
 }
 
 
@@ -188,18 +216,32 @@ def _is_generic_title(text: str) -> bool:
     return False
 
 
-def _pick_best_title(candidates: list[str]) -> str:
-    ordered = []
-    for candidate in candidates:
+def _title_cell_priority(anchor) -> int:
+    cell = anchor.find_parent(["td", "th"])
+    if cell is None:
+        return 0
+
+    classes = " ".join(cell.get("class", []))
+    cell_hint = normalize(f"{classes} {cell.get('id', '')}")
+    return 10 if re.search(r"title|subject|sbj|tit|제목", cell_hint) else 0
+
+
+def _pick_best_title(candidates: list[tuple[int, str]]) -> str:
+    usable = []
+    seen = set()
+
+    for priority, candidate in candidates:
         candidate = candidate.strip()
-        if candidate and candidate not in ordered:
-            ordered.append(candidate)
+        if not candidate or candidate in seen or _is_generic_title(candidate):
+            continue
+        seen.add(candidate)
+        usable.append((priority, candidate))
 
-    non_generic = [c for c in ordered if not _is_generic_title(c)]
-    if non_generic:
-        return max(non_generic, key=len)
+    if not usable:
+        return ""
 
-    return ordered[0] if ordered else ""
+    # 구조상 제목 셀에 있는 링크를 우선하고, 같은 우선순위에서만 긴 제목을 고른다.
+    return max(usable, key=lambda item: (item[0], len(item[1])))[1]
 
 
 def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
@@ -222,14 +264,15 @@ def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
         notice_id = get_notice_id(full_url)
 
         candidates = []
+        cell_priority = _title_cell_priority(a)
 
         attr_title = (a.get("title") or "").strip()
         if attr_title:
-            candidates.append(attr_title)
+            candidates.append((cell_priority + 1, attr_title))
 
         text = a.get_text(" ", strip=True)
         if text:
-            candidates.append(text)
+            candidates.append((cell_priority + 2, text))
 
         if not candidates:
             continue
@@ -245,9 +288,7 @@ def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
 
     for notice_id, entry in grouped.items():
         row = entry["row"]
-        row_text = row.get_text(" ", strip=True) if row else ""
-
-        posted_date = parse_date_from_text(row_text)
+        posted_date = extract_posted_date(row)
 
         if posted_date is None:
             continue
