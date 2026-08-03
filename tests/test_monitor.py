@@ -1,0 +1,68 @@
+import unittest
+from datetime import date
+from unittest.mock import patch
+
+from bs4 import BeautifulSoup
+
+import monitor
+
+
+BOARD_URL = "https://www.seoultech.ac.kr/service/info/notice/"
+
+
+class NoticeListParserTests(unittest.TestCase):
+    def parse_notices(self, html):
+        soup = BeautifulSoup(html, "html.parser")
+        with patch.object(monitor, "request_soup", return_value=soup):
+            return monitor.extract_recent_notice_links(BOARD_URL, date(2026, 1, 1))
+
+    def test_uses_date_cell_instead_of_date_inside_title(self):
+        notices = self.parse_notices(
+            """
+            <table><tr>
+              <td>1</td>
+              <td class="title"><a href="?do=commonview&amp;bidx=101&amp;bnum=4691">
+                2026-12-31 마감 인턴 모집
+              </a></td>
+              <td>취업진로본부</td>
+              <td class="date">2026-08-01</td>
+            </tr></table>
+            """
+        )
+
+        self.assertEqual(notices[0]["date"], "2026-08-01")
+
+    def test_prefers_visible_link_in_title_cell_over_other_links(self):
+        notices = self.parse_notices(
+            """
+            <table><tr>
+              <td class="title">
+                <a href="?do=commonview&amp;bidx=102&amp;bnum=4691">AI 특강 모집</a>
+              </td>
+              <td>
+                <a href="?do=commonview&amp;bidx=102&amp;bnum=4691" title="새 창 열림">더보기 +</a>
+              </td>
+              <td class="date">2026-08-02</td>
+            </tr></table>
+            """
+        )
+
+        self.assertEqual(notices[0]["title"], "AI 특강 모집")
+
+    def test_skips_row_without_a_dedicated_posted_date(self):
+        notices = self.parse_notices(
+            """
+            <table><tr>
+              <td class="title">
+                <a href="?do=commonview&amp;bidx=103&amp;bnum=4691">인턴 모집 (2026-08-30 마감)</a>
+              </td>
+              <td>취업진로본부</td>
+            </tr></table>
+            """
+        )
+
+        self.assertEqual(notices, [])
+
+
+if __name__ == "__main__":
+    unittest.main()
