@@ -91,13 +91,13 @@ class DisplayTitleTests(unittest.TestCase):
 class ExcludedNoticeTests(unittest.TestCase):
     def test_excludes_unwanted_notice_types(self):
         titles = [
-            "서울과학기술대학교 학칙 일부개정 공고",
+            "서울과학기술대학교 학칙 일부개정학칙안 공고",
             "2026학년도 교수모집 안내",
             "전임교원 초빙 공고",
             "2026년 학생예비군 훈련 안내",
             "제2생활관 생활관생 모집",
-            "학습 튜터 모집 안내",
-            "제15기 학생홍보대사 모집",
+            "컴퓨팅사고와 인공지능 튜터 장학생 선발 안내",
+            "국립대학육성사업 대학생 홍보대사 13기 모집",
             "병무청 청춘예찬 기자단 모집",
             "육군 현역병 입영 안내",
         ]
@@ -107,9 +107,15 @@ class ExcludedNoticeTests(unittest.TestCase):
                 self.assertTrue(monitor.is_excluded_notice(title))
 
     def test_does_not_exclude_similar_useful_notice(self):
-        self.assertFalse(
-            monitor.is_excluded_notice("교수학습법 AI 특강 참가자 모집")
-        )
+        titles = [
+            "교수학습법 AI 특강 참가자 모집",
+            "학생지도 튜터링 프로그램 튜티 모집",
+            "생활관 근로장학생 모집",
+        ]
+
+        for title in titles:
+            with self.subTest(title=title):
+                self.assertFalse(monitor.is_excluded_notice(title))
 
     def test_excluded_scholarship_board_notice_is_seen_without_notification(self):
         notice = {
