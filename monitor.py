@@ -164,29 +164,87 @@ def make_page_url(base_url: str, page: int) -> str:
     return urlunparse(parsed._replace(query=new_query))
 
 
-def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
-    unique = {}
+GENERIC_TITLE_TOKENS = {
+    "더보기", "더보기+", "더보기 +", "+", "more", "more+",
+    "자세히", "자세히보기", "상세보기", "바로가기", "view", "detail",
+    "read more", "목록",
+}
 
+
+def _is_generic_title(text: str) -> bool:
+    compact = re.sub(r"\s+", "", text or "").lower()
+
+    if not compact:
+        return True
+
+    if compact in {t.replace(" ", "").lower() for t in GENERIC_TITLE_TOKENS}:
+        return True
+
+    # 화살표/기호 등 글자가 전혀 없는 경우 (예: "»", "›")
+    if not re.search(r"[0-9a-zA-Z가-힣]", compact):
+        return True
+
+    return False
+
+
+def _pick_best_title(candidates: list[str]) -> str:
+    ordered = []
+    for candidate in candidates:
+        candidate = candidate.strip()
+        if candidate and candidate not in ordered:
+            ordered.append(candidate)
+
+    non_generic = [c for c in ordered if not _is_generic_title(c)]
+    if non_generic:
+        return max(non_generic, key=len)
+
+    return ordered[0] if ordered else ""
+
+
+def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
     page_url = make_page_url(board_url, 1)
     soup = request_soup(page_url)
 
-    dated_count = 0
-    recent_count = 0
-
     print(f"[INFO] Fetch latest page only: {page_url}")
+
+    # 같은 게시글을 가리키는 <a> 태그가 여러 개(썸네일, "더보기" 아이콘 등)일 수 있으므로
+    # 우선 게시글 단위로 후보 텍스트를 모아둔 뒤 가장 적절한 제목을 고른다.
+    grouped: dict[str, dict] = {}
 
     for a in soup.find_all("a", href=True):
         href = a["href"]
-        title = a.get_text(" ", strip=True)
 
         if "do=commonview" not in href:
             continue
 
-        if not title:
+        full_url = urljoin(board_url, href)
+        notice_id = get_notice_id(full_url)
+
+        candidates = []
+
+        attr_title = (a.get("title") or "").strip()
+        if attr_title:
+            candidates.append(attr_title)
+
+        text = a.get_text(" ", strip=True)
+        if text:
+            candidates.append(text)
+
+        if not candidates:
             continue
 
         row = a.find_parent("tr") or a.find_parent("li") or a.parent
-        row_text = row.get_text(" ", strip=True) if row else title
+
+        entry = grouped.setdefault(notice_id, {"url": full_url, "row": row, "candidates": []})
+        entry["candidates"].extend(candidates)
+
+    dated_count = 0
+    recent_count = 0
+    unique = {}
+
+    for notice_id, entry in grouped.items():
+        row = entry["row"]
+        row_text = row.get_text(" ", strip=True) if row else ""
 
         posted_date = parse_date_from_text(row_text)
 
@@ -200,13 +258,14 @@ def extract_recent_notice_links(board_url: str, cutoff_date) -> list[dict]:
 
         recent_count += 1
 
-        full_url = urljoin(board_url, href)
-        notice_id = get_notice_id(full_url)
+        title = _pick_best_title(entry["candidates"])
+        if not title:
+            continue
 
         unique[notice_id] = {
             "id": notice_id,
             "title": title,
-            "url": full_url,
+            "url": entry["url"],
             "date": posted_date.isoformat(),
         }
 
@@ -246,26 +305,39 @@ def extract_detail_body(detail_url: str) -> str:
             text = text[idx + len(marker):]
             break
 
-    # 너무 뒤쪽의 하단 메뉴 제거
+    # 너무 뒤쪽의 하단 메뉴/이전글·다음글 제거
+    # 표기 방식이 게시판마다 달라("\n이전글", "이전 내용이 없습니다" 등) 최대한 다양한
+    # 마커를 모아둔 뒤, 실제로 텍스트에 등장한 것 중 가장 먼저 나오는 위치에서 자른다.
     end_candidates = [
         "\n목록",
         "\n이전글",
         "\n다음글",
+        "\n이전 글",
+        "\n다음 글",
+        "이전 내용이 없습니다",
+        "다음 내용이 없습니다",
+        "이전글이 없습니다",
+        "다음글이 없습니다",
         "개인정보처리방침",
         "저작권보호정책",
     ]
 
+    cut_idx = None
     for marker in end_candidates:
         idx = text.find(marker)
-        if idx > 100:
-            text = text[:idx]
-            break
+        if idx > 100 and (cut_idx is None or idx < cut_idx):
+            cut_idx = idx
+
+    if cut_idx is not None:
+        text = text[:cut_idx]
 
     return clean_body_text(text)
 
 
-def match_keywords(title: str, body: str) -> list[str]:
-    target = normalize(title + "\n" + body)
+def match_keywords(title: str) -> list[str]:
+    # 이전글/다음글 제목 등 본문에 섞여 들어오는 다른 게시글 정보로
+    # 오탐지되지 않도록 오직 해당 게시물의 제목만으로 판단한다.
+    target = normalize(title)
 
     excluded = [
         kw for kw in EXCLUDE_KEYWORDS
@@ -394,19 +466,19 @@ def main() -> None:
                 changed = True
                 continue
             
-            try:
-                body = extract_detail_body(detail_url)
-            except Exception as e:
-                body = f"(본문 추출 실패: {e})"
-            
             if board_name in ALWAYS_NOTIFY_BOARDS:
-                notify(board_name, title, body, detail_url, ["장학공지 전체 알림"])
+                matched = ["장학공지 전체 알림"]
             else:
-                matched = match_keywords(title, body)
-            
-                if matched:
-                    notify(board_name, title, body, detail_url, matched)
-            
+                matched = match_keywords(title)
+
+            if matched:
+                try:
+                    body = extract_detail_body(detail_url)
+                except Exception as e:
+                    body = f"(본문 추출 실패: {e})"
+
+                notify(board_name, title, body, detail_url, matched)
+
             seen[board_name].append(make_seen_item(notice))
             changed = True
 
