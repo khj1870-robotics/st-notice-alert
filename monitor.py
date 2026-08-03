@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
+from google import genai
 
 
 BOARDS = [
@@ -352,7 +353,9 @@ def match_keywords(title: str) -> list[str]:
     ]
 
 
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
+# "-latest" 별칭은 구글이 새 모델을 낼 때마다 자동으로 최신 flash 모델을 가리키도록
+# 유지해주므로, 특정 버전(예: gemini-2.0-flash)을 고정해서 나중에 구버전 취급되는 것을 피한다.
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-flash-latest"
 
 SUMMARY_PROMPT = (
     "다음은 대학교 공지사항 게시글이다. 이 글을 읽고 실제로 확인이 필요한 핵심 정보만 "
@@ -365,37 +368,35 @@ SUMMARY_PROMPT = (
     "[제목]\n{title}\n\n[본문]\n{body}"
 )
 
+_gemini_client = None
 
-def summarize_with_ai(title: str, body: str) -> str | None:
+
+def _get_gemini_client():
+    global _gemini_client
+
     api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key or not body:
+    if not api_key:
         return None
 
-    api_url = (
-        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-    )
+    if _gemini_client is None:
+        _gemini_client = genai.Client(api_key=api_key)
+
+    return _gemini_client
+
+
+def summarize_with_ai(title: str, body: str) -> str | None:
+    if not body:
+        return None
+
+    client = _get_gemini_client()
+    if client is None:
+        return None
+
     prompt = SUMMARY_PROMPT.format(title=title, body=body[:6000])
 
     try:
-        response = requests.post(
-            api_url,
-            params={"key": api_key},
-            json={
-                "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 500},
-            },
-            timeout=30,
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        candidates = data.get("candidates") or []
-        if not candidates:
-            return None
-
-        parts = candidates[0].get("content", {}).get("parts", [])
-        text = "".join(part.get("text", "") for part in parts).strip()
-
+        response = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        text = (response.text or "").strip()
         return text or None
     except Exception as e:
         print(f"[WARN] AI 요약 실패: {e}")
