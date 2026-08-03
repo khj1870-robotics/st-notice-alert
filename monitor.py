@@ -2,7 +2,6 @@ import html
 import json
 import os
 import re
-import time
 import unicodedata
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -353,16 +352,54 @@ def match_keywords(title: str) -> list[str]:
     ]
 
 
-def split_text(text: str, limit: int = 3000) -> list[str]:
-    if not text:
-        return ["(본문 없음)"]
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash")
 
-    chunks = []
-    while text:
-        chunks.append(text[:limit])
-        text = text[limit:]
+SUMMARY_PROMPT = (
+    "다음은 대학교 공지사항 게시글이다. 이 글을 읽고 실제로 확인이 필요한 핵심 정보만 "
+    "불릿 목록으로 정리해줘.\n"
+    "- 지원자격/신청대상, 지원금액/혜택, 신청기간/마감일, 일시, 장소, 문의처 등 게시글에 "
+    "실제로 등장하는 항목만 포함하고, 본문에 없는 내용은 만들어내지 마.\n"
+    "- 각 줄은 '- 항목: 내용' 형식으로 작성하고 최대 6줄 이내로 작성해.\n"
+    "- 마지막 줄에는 전체 내용을 한 문장으로 요약해서 추가해.\n"
+    "- 다른 설명이나 인사말 없이 목록만 출력해.\n\n"
+    "[제목]\n{title}\n\n[본문]\n{body}"
+)
 
-    return chunks
+
+def summarize_with_ai(title: str, body: str) -> str | None:
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key or not body:
+        return None
+
+    api_url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+    )
+    prompt = SUMMARY_PROMPT.format(title=title, body=body[:6000])
+
+    try:
+        response = requests.post(
+            api_url,
+            params={"key": api_key},
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"temperature": 0.2, "maxOutputTokens": 500},
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        candidates = data.get("candidates") or []
+        if not candidates:
+            return None
+
+        parts = candidates[0].get("content", {}).get("parts", [])
+        text = "".join(part.get("text", "") for part in parts).strip()
+
+        return text or None
+    except Exception as e:
+        print(f"[WARN] AI 요약 실패: {e}")
+        return None
 
 
 def send_telegram_message(text: str) -> None:
@@ -395,28 +432,25 @@ def send_test_message() -> None:
 def notify(board_name: str, title: str, body: str, url: str, matched: list[str]) -> None:
     safe_board = html.escape(board_name)
     safe_title = html.escape(title)
-    safe_body = html.escape(body)
     safe_url = html.escape(url)
     safe_keywords = html.escape(", ".join(matched))
 
-    header = (
+    summary = summarize_with_ai(title, body)
+    summary_text = (
+        html.escape(summary) if summary
+        else "(AI 요약 불가 - 링크에서 본문을 직접 확인해주세요)"
+    )
+
+    message = (
         "<b>[서울과기대 공지 알림]</b>\n\n"
         f"<b>게시판:</b> {safe_board}\n"
         f"<b>매칭 키워드:</b> {safe_keywords}\n\n"
         f"<b>제목:</b>\n{safe_title}\n\n"
-        f"<b>링크:</b>\n{safe_url}\n\n"
-        "<b>본문:</b>\n"
+        f"<b>AI 요약:</b>\n{summary_text}\n\n"
+        f"<b>링크:</b>\n{safe_url}"
     )
 
-    body_chunks = split_text(safe_body, limit=3000)
-
-    send_telegram_message(header + body_chunks[0])
-
-    for i, chunk in enumerate(body_chunks[1:], start=2):
-        time.sleep(0.5)
-        send_telegram_message(
-            f"<b>[본문 계속 {i}]</b>\n\n{chunk}\n\n{safe_url}"
-        )
+    send_telegram_message(message)
 
 
 def main() -> None:
