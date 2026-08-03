@@ -368,11 +368,23 @@ SUMMARY_PROMPT = (
     "\"unclear\". 지원/모집과 무관한 공지면 \"n/a\".\n"
     "- living_expense: 지원금/장학금이 생활비 명목(생활비 지원, 생활장학금 등)이면 \"yes\", "
     "등록금·활동비·상금 등 생활비 목적이 아니면 \"no\". 금전적 지원이 없는 공지면 \"n/a\".\n"
+    "- residency_seoul_jeju: 거주지/출신지 제한이 있을 때 서울 거주자 또는 제주도 출신자가 "
+    "지원 가능한지 여부. 지역 제한이 아예 언급되어 있지 않으면 서울/제주 모두 포함되는 것으로 "
+    "보고 \"yes\". 서울/제주가 아닌 특정 지역(예: 울산, 부산 등)으로만 한정되어 있으면 \"no\". "
+    "애매하면 \"unclear\". 이 공지에 지역 제한 개념 자체가 해당하지 않으면 \"n/a\".\n"
+    "- income_bracket3: 학자금 지원구간(소득분위) 기준으로 3분위 학생이 지원 가능한지 여부. "
+    "소득분위 기준이 아예 언급되어 있지 않으면 지원 가능한 것으로 보고 \"yes\". 3분위가 명백히 "
+    "제외되는 기준(예: 1~2분위만 해당, 기초생활수급자만 등)이면 \"no\". 애매하면 \"unclear\". "
+    "소득분위 개념이 이 공지에 해당하지 않으면 \"n/a\".\n"
+    "- gpa_cutoff: 성적(평점) 커트라인이 본문에 명시되어 있으면 그 값을 그대로 문자열로 "
+    "(예: \"직전학기 평점 3.0/4.5 이상\"). 본문에 성적 기준이 아예 없으면 빈 문자열.\n"
     "- documents: 신청 시 제출해야 하는 서류/자료 이름의 배열. 본문에 명시된 것만 담고, "
     "없으면 빈 배열.\n"
-    "- summary: 전체 내용을 한두 문장으로 요약.\n"
+    "- summary: 핵심을 아주 짧은 보고서 헤드라인처럼 한 구절로 요약(완결된 문장 아니어도 됨). "
+    "게시글 제목을 그대로 반복하지 마.\n"
     "- details: label/value 쌍의 배열. 지원자격, 지원금액, 신청기간, 일시, 장소, 문의처 등 "
-    "본문에 실제로 등장하는 핵심 항목만 최대 6개까지. 본문에 없는 내용은 만들어내지 마.\n\n"
+    "본문에 실제로 등장하는 핵심 항목만 최대 6개까지. 각 value도 최대한 짧게. 본문에 없는 "
+    "내용은 만들어내지 마.\n\n"
     "[제목]\n{title}\n\n[본문]\n{body}"
 )
 
@@ -381,6 +393,9 @@ SUMMARY_RESPONSE_SCHEMA = {
     "properties": {
         "eligibility_grade4": {"type": "string", "enum": ["yes", "no", "unclear", "n/a"]},
         "living_expense": {"type": "string", "enum": ["yes", "no", "n/a"]},
+        "residency_seoul_jeju": {"type": "string", "enum": ["yes", "no", "unclear", "n/a"]},
+        "income_bracket3": {"type": "string", "enum": ["yes", "no", "unclear", "n/a"]},
+        "gpa_cutoff": {"type": "string"},
         "documents": {"type": "array", "items": {"type": "string"}},
         "summary": {"type": "string"},
         "details": {
@@ -446,18 +461,31 @@ CHECK_ICONS = {"yes": "✅", "no": "❌", "unclear": "❓"}
 CHECK_LABELS = {
     "eligibility_grade4": "4학년 지원 가능",
     "living_expense": "생활비성 지원금",
+    "residency_seoul_jeju": "서울/제주 거주(출신) 가능",
+    "income_bracket3": "소득 3분위 지원 가능",
 }
+CHECK_FIELDS = (
+    "eligibility_grade4",
+    "living_expense",
+    "residency_seoul_jeju",
+    "income_bracket3",
+)
 
 
 def format_ai_summary(parsed: dict) -> str | None:
     sections = []
 
     checks = []
-    for field in ("eligibility_grade4", "living_expense"):
+    for field in CHECK_FIELDS:
         value = parsed.get(field)
         icon = CHECK_ICONS.get(value)
         if icon:
             checks.append(f"{icon} {CHECK_LABELS[field]}")
+
+    gpa_cutoff = (parsed.get("gpa_cutoff") or "").strip()
+    if gpa_cutoff:
+        checks.append(f"🎯 성적컷: {html.escape(gpa_cutoff)}")
+
     if checks:
         sections.append("\n".join(checks))
 
