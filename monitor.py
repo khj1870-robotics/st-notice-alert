@@ -67,6 +67,14 @@ MAX_PAGES_PER_BOARD = 1
 
 DATE_RE = re.compile(r"(20\d{2})[-.](\d{1,2})[-.](\d{1,2})")
 DATE_CELL_RE = re.compile(r"^\s*(20\d{2})[-.](\d{1,2})[-.](\d{1,2})\s*$")
+DISPLAY_TITLE_PREFIX_RE = re.compile(
+    r"^(?:\s*[\(\[【]\s*(?:홍보|외부홍보|대외홍보)\s*[\)\]】]\s*)+",
+    re.IGNORECASE,
+)
+DISPLAY_TITLE_DEADLINE_RE = re.compile(
+    r"\s*[\(\[【]\s*[~～]?\s*(?:20\d{2}[./-])?\d{1,2}[./-]\d{1,2}"
+    r".*?(?:까지|마감)\s*[\)\]】]?\s*$"
+)
 
 
 def normalize(text: str) -> str:
@@ -395,6 +403,15 @@ def match_keywords(title: str) -> list[str]:
     ]
 
 
+def clean_display_title(title: str) -> str:
+    """알림 제목에서 홍보 말머리와 끝의 접수기한 표기만 제거한다."""
+    original = (title or "").strip()
+    cleaned = DISPLAY_TITLE_PREFIX_RE.sub("", original)
+    cleaned = DISPLAY_TITLE_DEADLINE_RE.sub("", cleaned)
+    cleaned = re.sub(r"\s{2,}", " ", cleaned).strip()
+    return cleaned or original
+
+
 # "-latest" 별칭은 구글이 새 모델을 낼 때마다 자동으로 최신 flash 모델을 가리키도록
 # 유지해주므로, 특정 버전(예: gemini-2.0-flash)을 고정해서 나중에 구버전 취급되는 것을 피한다.
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL") or "gemini-flash-latest"
@@ -582,7 +599,7 @@ def send_test_message() -> None:
 
 def notify(board_name: str, title: str, body: str, url: str, matched: list[str]) -> None:
     safe_board = html.escape(board_name)
-    safe_title = html.escape(title)
+    safe_title = html.escape(clean_display_title(title))
     safe_url = html.escape(url)
     safe_keywords = html.escape(", ".join(matched))
 
