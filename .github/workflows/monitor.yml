@@ -1,11 +1,6 @@
 name: SeoulTech Notice Monitor
 
 on:
-  push:
-    branches:
-      - agent/fix-notice-list-parser
-    paths:
-      - seen.json
   schedule:
     - cron: '7 9,13,18 * * 1-5'
       timezone: "Asia/Seoul"
