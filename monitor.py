@@ -58,21 +58,16 @@ EXCLUDE_KEYWORDS = [
 ]
 
 # 게시판 종류와 관계없이 알림하지 않을 공지 유형이다.
-# 공백 차이만 무시하고 제목에 아래 문구가 포함되면 제외한다.
-EXCLUDED_NOTICE_TYPES = [
-    "학칙 일부개정 공고",
-    "교수 모집",
-    "교수 초빙",
-    "교수 채용",
-    "교원 모집",
-    "교원 초빙",
-    "교원 채용",
-    "학생예비군",
-    "생활관생 모집",
-    "튜터 모집",
-    "홍보대사 모집",
-    "병무청",
-    "현역병",
+# 판별할 때 제목의 공백을 제거하므로 중간에 있는 기수·장학생 등의 표기를 허용한다.
+EXCLUDED_NOTICE_PATTERNS = [
+    re.compile(r"학칙.*일부개정.*공고"),
+    re.compile(r"(?:교수|교원)(?:모집|초빙|채용)"),
+    re.compile(r"학생예비군"),
+    re.compile(r"생활관생.*(?:모집|선발)"),
+    re.compile(r"튜터(?!링).*?(?:모집|선발)"),
+    re.compile(r"홍보대사.*?(?:모집|선발)"),
+    re.compile(r"병무청"),
+    re.compile(r"현역병"),
 ]
 
 ALWAYS_NOTIFY_BOARDS = {
@@ -424,10 +419,7 @@ def match_keywords(title: str) -> list[str]:
 def is_excluded_notice(title: str) -> bool:
     """사용자가 알림을 원하지 않는 공지 유형인지 제목으로 판별한다."""
     compact_title = re.sub(r"\s+", "", normalize(title))
-    return any(
-        re.sub(r"\s+", "", normalize(notice_type)) in compact_title
-        for notice_type in EXCLUDED_NOTICE_TYPES
-    )
+    return any(pattern.search(compact_title) for pattern in EXCLUDED_NOTICE_PATTERNS)
 
 
 def clean_display_title(title: str) -> str:
